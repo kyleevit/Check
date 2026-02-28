@@ -126,12 +126,6 @@
           "type": "string",
           "default": ""
         },
-		"companyURL": {
-          "title": "Company URL",
-          "description": "Company URL used in the extension",
-          "type": "string",
-          "default": "https://cyberdrain.com/"
-        },
         "productName": {
           "title": "Product Name",
           "description": "Custom name for the extension",
@@ -143,6 +137,27 @@
           "description": "Email address for user support",
           "type": "string",
           "format": "email",
+          "default": ""
+        },
+        "supportUrl": {
+          "title": "Support URL",
+          "description": "URL opened by the popup Support link",
+          "type": "string",
+          "format": "uri",
+          "default": ""
+        },
+        "privacyPolicyUrl": {
+          "title": "Privacy URL",
+          "description": "URL opened by the popup Privacy link",
+          "type": "string",
+          "format": "uri",
+          "default": ""
+        },
+        "aboutUrl": {
+          "title": "About URL",
+          "description": "URL opened by the popup About link",
+          "type": "string",
+          "format": "uri",
           "default": ""
         },
         "primaryColor": {

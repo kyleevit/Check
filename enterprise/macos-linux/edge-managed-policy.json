@@ -22,6 +22,9 @@
                     "companyName": "",
                     "productName": "",
                     "supportEmail": "",
+                    "supportUrl": "",
+                    "privacyPolicyUrl": "",
+                    "aboutUrl": "",
                     "primaryColor": "#F77F00",
                     "logoUrl": ""
                 },

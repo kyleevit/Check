@@ -31,9 +31,11 @@
           "enableDebugLogging": false,
           "customBranding": {
             "companyName": "",
-            "companyURL": "https://cyberdrain.com/",
             "productName": "",
             "supportEmail": "",
+            "supportUrl": "",
+            "privacyPolicyUrl": "",
+            "aboutUrl": "",
             "primaryColor": "#F77F00",
             "logoUrl": ""
           },

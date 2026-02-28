@@ -117,6 +117,9 @@ export class ConfigManager {
           customBranding: {
             companyName: "CyberDrain",
             productName: "Check Enterprise",
+            supportUrl: "https://support.cyberdrain.com",
+            privacyPolicyUrl: "https://cyberdrain.com/privacy",
+            aboutUrl: "",
             primaryColor: "#F77F00",
             logoUrl:
               "https://cyberdrain.com/images/favicon_hu_20e77b0e20e363e.png",
@@ -333,6 +336,7 @@ export class ConfigManager {
       supportEmail: "support@check.com",
       supportUrl: "https://support.check.com",
       privacyPolicyUrl: "https://check.com/privacy",
+      aboutUrl: "",
       termsOfServiceUrl: "https://check.com/terms",
 
       // Customizable text
@@ -462,8 +466,12 @@ export class ConfigManager {
       await this.loadConfig();
     }
 
-    // Start with the base branding config
-    let finalBranding = await this.getBrandingConfig();
+    // Start with defaults to ensure required branding links are always available
+    const defaultBranding = this.getDefaultBrandingConfig();
+    let finalBranding = {
+      ...defaultBranding,
+      ...(await this.getBrandingConfig()),
+    };
 
     // If enterprise has custom branding, merge it in (takes precedence)
     if (this.enterpriseConfig && this.enterpriseConfig.customBranding) {
@@ -478,6 +486,11 @@ export class ConfigManager {
     const currentConfig = await this.getConfig();
     if (currentConfig.genericWebhook) {
       finalBranding.genericWebhook = currentConfig.genericWebhook;
+    }
+
+    // Derive support URL when only partial branding is configured
+    if (!finalBranding.supportUrl && finalBranding.supportEmail) {
+      finalBranding.supportUrl = `mailto:${finalBranding.supportEmail}`;
     }
 
     return finalBranding;

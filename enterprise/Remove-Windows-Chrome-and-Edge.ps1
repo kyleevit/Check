@@ -63,9 +63,11 @@ function Remove-ExtensionSettings {
         if (Test-Path $customBrandingKey) {
             $brandingPropertiesToRemove = @(
                 "companyName",
-                "companyURL",
                 "productName",
                 "supportEmail",
+                "supportUrl",
+                "privacyPolicyUrl",
+                "aboutUrl",
                 "primaryColor",
                 "logoUrl"
             )

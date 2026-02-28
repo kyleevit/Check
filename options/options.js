@@ -95,9 +95,11 @@ class CheckOptions {
 
     // Branding
     this.elements.companyName = document.getElementById("companyName");
-    this.elements.companyURL = document.getElementById("companyURL");
     this.elements.productName = document.getElementById("productName");
     this.elements.supportEmail = document.getElementById("supportEmail");
+    this.elements.supportUrl = document.getElementById("supportUrl");
+    this.elements.privacyPolicyUrl = document.getElementById("privacyPolicyUrl");
+    this.elements.aboutUrl = document.getElementById("aboutUrl");
     this.elements.primaryColor = document.getElementById("primaryColor");
     this.elements.logoUrl = document.getElementById("logoUrl");
     this.elements.brandingPreview = document.getElementById("brandingPreview");
@@ -185,8 +187,10 @@ class CheckOptions {
     // Branding preview updates
     const brandingInputs = [
       this.elements.companyName,
-      this.elements.companyURL,
       this.elements.productName,
+      this.elements.supportUrl,
+      this.elements.privacyPolicyUrl,
+      this.elements.aboutUrl,
       this.elements.primaryColor,
       this.elements.logoUrl,
     ];
@@ -476,8 +480,10 @@ class CheckOptions {
       console.warn("Options: Using fallback branding configuration");
       this.brandingConfig = {
         companyName: "CyberDrain",
-    companyURL: "https://cyberdrain.com/",
         productName: "Check",
+        supportUrl: "https://support.cyberdrain.com",
+        privacyPolicyUrl: "https://cyberdrain.com/privacy",
+        aboutUrl: "",
         primaryColor: "#F77F00",
         logoUrl: "images/icon48.png",
       };
@@ -485,8 +491,10 @@ class CheckOptions {
       console.error("Error loading branding configuration:", error);
       this.brandingConfig = {
         companyName: "CyberDrain",
-		    companyURL: "https://cyberdrain.com/",
         productName: "Check",
+        supportUrl: "https://support.cyberdrain.com",
+        privacyPolicyUrl: "https://cyberdrain.com/privacy",
+        aboutUrl: "",
         primaryColor: "#F77F00",
         logoUrl: "images/icon48.png",
       };
@@ -1011,9 +1019,12 @@ class CheckOptions {
 
     // Branding settings
     this.elements.companyName.value = this.brandingConfig?.companyName || "";
-    this.elements.companyURL.value = this.brandingConfig?.companyURL || "";
     this.elements.productName.value = this.brandingConfig?.productName || "";
     this.elements.supportEmail.value = this.brandingConfig?.supportEmail || "";
+    this.elements.supportUrl.value = this.brandingConfig?.supportUrl || "";
+    this.elements.privacyPolicyUrl.value =
+      this.brandingConfig?.privacyPolicyUrl || "";
+    this.elements.aboutUrl.value = this.brandingConfig?.aboutUrl || "";
     this.elements.primaryColor.value =
     this.brandingConfig?.primaryColor || "#F77F00";
     this.elements.logoUrl.value = this.brandingConfig?.logoUrl || "";
@@ -1339,9 +1350,11 @@ class CheckOptions {
   gatherBrandingData() {
     return {
       companyName: this.elements.companyName.value,
-      companyURL: this.elements.companyURL.value,
       productName: this.elements.productName.value,
       supportEmail: this.elements.supportEmail.value,
+      supportUrl: this.elements.supportUrl.value,
+      privacyPolicyUrl: this.elements.privacyPolicyUrl.value,
+      aboutUrl: this.elements.aboutUrl.value,
       primaryColor: this.elements.primaryColor.value,
       logoUrl: this.elements.logoUrl.value,
     };
@@ -2457,8 +2470,10 @@ class CheckOptions {
           // Custom branding (matches managed_schema.json structure)
           customBranding: {
             companyName: "CyberDrain",
-            companyURL: "https://cyberdrain.com/",
             productName: "Check Enterprise",
+            supportUrl: "https://support.cyberdrain.com",
+            privacyPolicyUrl: "https://cyberdrain.com/privacy",
+            aboutUrl: "",
             primaryColor: "#F77F00",
             logoUrl:
               "https://cyberdrain.com/images/favicon_hu_20e77b0e20e363e.png",
@@ -2598,9 +2613,11 @@ class CheckOptions {
       // Note: enableDeveloperConsoleLogging is excluded - should remain available for debugging
       // Branding fields (if customBranding policy is present)
       companyName: this.elements.companyName,
-      companyURL: this.elements.companyURL,
       productName: this.elements.productName,
       supportEmail: this.elements.supportEmail,
+      supportUrl: this.elements.supportUrl,
+      privacyPolicyUrl: this.elements.privacyPolicyUrl,
+      aboutUrl: this.elements.aboutUrl,
       primaryColor: this.elements.primaryColor,
       logoUrl: this.elements.logoUrl,
     };
@@ -3249,10 +3266,6 @@ class CheckOptions {
   }
 
   updateBrandingPreview() {
-    const companyName =
-      this.elements.companyName.value || this.brandingConfig.companyName;
-    const companyURL =
-      this.elements.companyURL.value || this.brandingConfig.companyURL;
     const productName =
       this.elements.productName.value || this.brandingConfig.productName;
     const primaryColor =
