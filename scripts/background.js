@@ -404,9 +404,11 @@ class CheckBackground {
       // Initialize domain squatting detector with rules and URL allowlist
       const detectionRules = this.detectionRulesManager.cachedRules;
       if (detectionRules) {
-        const config = await this.configManager.getConfig();
-        const urlAllowlist = config?.urlAllowlist || [];
-        await this.domainSquattingDetector.initialize(detectionRules, urlAllowlist);
+        const runtimeConfig = await this.configManager.getConfig();
+        await this.domainSquattingDetector.initialize(
+          detectionRules,
+          runtimeConfig
+        );
         logger.log("Domain squatting detector initialized");
       }
 
@@ -1426,9 +1428,11 @@ class CheckBackground {
             // Also update domain squatting detector with new rules and URL allowlist
             const updatedRules = await this.detectionRulesManager.getDetectionRules();
             if (updatedRules && this.domainSquattingDetector) {
-              const config = await this.configManager.getConfig();
-              const urlAllowlist = config?.urlAllowlist || [];
-              await this.domainSquattingDetector.initialize(updatedRules, urlAllowlist);
+              const runtimeConfig = await this.configManager.getConfig();
+              await this.domainSquattingDetector.initialize(
+                updatedRules,
+                runtimeConfig
+              );
               logger.log("Domain squatting detector updated with new rules");
             }
           } catch (error) {
@@ -1449,14 +1453,29 @@ class CheckBackground {
             }
             
             const result = this.domainSquattingDetector.checkDomain(domain);
-            // Include the action from rules configuration
-            if (result && result.detected) {
-              const rules = await this.detectionRulesManager.getDetectionRules();
-              result.action = rules?.domain_squatting?.action || 'block';
-            }
             sendResponse({ success: true, result });
           } catch (error) {
             logger.error("Check: Failed to check domain squatting:", error);
+            sendResponse({ success: false, error: error.message });
+          }
+          break;
+
+        case "REDIRECT_TO_BLOCKED_PAGE":
+          try {
+            if (!sender.tab?.id) {
+              sendResponse({ success: false, error: "No tab ID available" });
+              break;
+            }
+
+            if (!message.url) {
+              sendResponse({ success: false, error: "No redirect URL provided" });
+              break;
+            }
+
+            await chrome.tabs.update(sender.tab.id, { url: message.url });
+            sendResponse({ success: true });
+          } catch (error) {
+            logger.error("Check: Failed to redirect tab to blocked page:", error);
             sendResponse({ success: false, error: error.message });
           }
           break;
@@ -1485,8 +1504,10 @@ class CheckBackground {
             // If URL allowlist changed, reinitialize detector to extract new domains
             if (this.domainSquattingDetector) {
               const detectionRules = this.detectionRulesManager.cachedRules || {};
-              const urlAllowlist = updatedConfig?.urlAllowlist || [];
-              await this.domainSquattingDetector.initialize(detectionRules, urlAllowlist);
+              await this.domainSquattingDetector.initialize(
+                detectionRules,
+                updatedConfig
+              );
               logger.log("Domain squatting detector configuration updated");
             }
 
@@ -1848,8 +1869,9 @@ class CheckBackground {
         enhancedEvent.threatDetected = true;
         break;
       case "threat_detected":
-        enhancedEvent.action = event.action || "blocked";
-        enhancedEvent.threatLevel = event.threatLevel || "high";
+        enhancedEvent.action = event.action || "warned";
+        enhancedEvent.threatLevel =
+          event.threatLevel || event.severity || "medium";
         enhancedEvent.threatDetected = true;
         break;
       case "form_submission":

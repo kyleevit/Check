@@ -178,9 +178,15 @@
     },
     "domainSquatting": {
       "title": "Domain Squatting Detection",
-      "description": "Configuration for domain squatting detection to protect against typosquatting, homoglyphs, and combosquatting attacks. Enable/disable is controlled by the detection rules JSON. Domains are automatically extracted from the URL allowlist.",
+      "description": "Configuration for domain squatting detection to protect against typosquatting, homoglyphs, and combosquatting attacks. Enable/disable is controlled here (config/policy), and domains are automatically extracted from the URL allowlist.",
       "type": "object",
       "properties": {
+        "enabled": {
+          "title": "Enabled",
+          "description": "Enable or disable domain squatting detection",
+          "type": "boolean",
+          "default": true
+        },
         "deviationThreshold": {
           "title": "Deviation Threshold",
           "description": "Maximum number of character differences (Levenshtein distance) to trigger detection. Lower values are stricter.",

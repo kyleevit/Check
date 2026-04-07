@@ -60,6 +60,9 @@ class CheckOptions {
     this.elements.customRulesUrl = document.getElementById("customRulesUrl");
     this.elements.updateInterval = document.getElementById("updateInterval");
     this.elements.urlAllowlist = document.getElementById("urlAllowlist");
+    this.elements.domainSquattingEnabled = document.getElementById(
+      "domainSquattingEnabled"
+    );
     this.elements.refreshDetectionRules = document.getElementById(
       "refreshDetectionRules"
     );
@@ -491,8 +494,8 @@ class CheckOptions {
       this.brandingConfig = {
         companyName: "CyberDrain",
         productName: "Check",
-        supportUrl: "https://support.cyberdrain.com",
-        privacyPolicyUrl: "https://cyberdrain.com/privacy",
+        supportUrl: "",
+        privacyPolicyUrl: "",
         aboutUrl: "",
         primaryColor: "#F77F00",
         logoUrl: "images/icon48.png",
@@ -502,8 +505,8 @@ class CheckOptions {
       this.brandingConfig = {
         companyName: "CyberDrain",
         productName: "Check",
-        supportUrl: "https://support.cyberdrain.com",
-        privacyPolicyUrl: "https://cyberdrain.com/privacy",
+        supportUrl: "",
+        privacyPolicyUrl: "",
         aboutUrl: "",
         primaryColor: "#F77F00",
         logoUrl: "images/icon48.png",
@@ -856,7 +859,7 @@ class CheckOptions {
 
   renderPlaygroundResults(html) {
     if (!this.elements.playgroundResults) return;
-    this.elements.playgroundResults.innerHTML = html;
+    this.elements.playgroundResults.replaceChildren(this.createHtmlFragment(html));
   }
   /* ================= End Rule Playground ================= */
 
@@ -993,6 +996,11 @@ class CheckOptions {
       this.elements.urlAllowlist.value = Array.isArray(allowlist)
         ? allowlist.join('\n')
         : (allowlist || '');
+    }
+
+    if (this.elements.domainSquattingEnabled) {
+      this.elements.domainSquattingEnabled.checked =
+        this.config?.domainSquatting?.enabled !== false;
     }
 
     // Handle updateInterval - ensure we always show hours in the UI
@@ -1196,7 +1204,9 @@ class CheckOptions {
   }
 
   gatherFormData() {
-       const formData = {
+      const existingDomainSquatting = this.config?.domainSquatting || {};
+
+      const formData = {
       // Extension settings
       enablePageBlocking: this.elements.enablePageBlocking?.checked !== false,
       enableCippReporting: this.elements.enableCippReporting?.checked || false,
@@ -1244,6 +1254,27 @@ class CheckOptions {
       urlAllowlist: this.elements.urlAllowlist?.value
         ? this.elements.urlAllowlist.value.split('\n').filter(line => line.trim())
         : [],
+
+      // Domain squatting settings (runtime control moved from rules JSON)
+      domainSquatting: {
+        enabled: this.elements.domainSquattingEnabled?.checked !== false,
+        deviationThreshold: existingDomainSquatting.deviationThreshold ?? 2,
+        algorithms: {
+          levenshtein:
+            existingDomainSquatting.algorithms?.levenshtein !== false,
+          homoglyph: existingDomainSquatting.algorithms?.homoglyph !== false,
+          typosquat: existingDomainSquatting.algorithms?.typosquat !== false,
+          combosquat: existingDomainSquatting.algorithms?.combosquat !== false,
+        },
+        protectedDomains: Array.isArray(existingDomainSquatting.protectedDomains)
+          ? existingDomainSquatting.protectedDomains
+          : [],
+        Action:
+          existingDomainSquatting.Action ||
+          existingDomainSquatting.action ||
+          "block",
+        logDetections: existingDomainSquatting.logDetections !== false,
+      },
 
       // Developer mode (debug logging auto-enabled when this is true)
       enableDeveloperConsoleLogging:
@@ -1536,24 +1567,37 @@ class CheckOptions {
     // Domain Squatting Detection
     if (config.domain_squatting) {
       const ds = config.domain_squatting;
+      const runtimeDs = this.config?.domainSquatting || {};
+      const effectiveAlgorithms = {
+        ...(ds.algorithms || {}),
+        ...(runtimeDs.algorithms || {}),
+      };
+      const protectedDomains = [
+        ...(Array.isArray(ds.protected_domains) ? ds.protected_domains : []),
+        ...(Array.isArray(runtimeDs.protectedDomains)
+          ? runtimeDs.protectedDomains
+          : []),
+      ];
+      const uniqueProtectedDomains = [...new Set(protectedDomains)];
+
       let squattingContent = `
-        <div class="config-item"><strong>Enabled:</strong> <span class="config-value">${ds.enabled ? 'Yes' : 'No'}</span></div>
-        <div class="config-item"><strong>Deviation Threshold:</strong> <span class="config-value">${ds.deviation_threshold || 2}</span></div>
-        <div class="config-item"><strong>Action:</strong> <span class="config-value">${ds.action || 'block'}</span></div>
+        <div class="config-item"><strong>Enabled (Settings):</strong> <span class="config-value">${runtimeDs.enabled !== false ? 'Yes' : 'No'}</span></div>
+        <div class="config-item"><strong>Deviation Threshold:</strong> <span class="config-value">${runtimeDs.deviationThreshold ?? ds.deviation_threshold ?? 2}</span></div>
+        <div class="config-item"><strong>Action:</strong> <span class="config-value">${runtimeDs.Action || runtimeDs.action || ds.action || 'block'}</span></div>
         <div class="config-item"><strong>Severity:</strong> <span class="config-value">${ds.severity || 'high'}</span></div>
       `;
       
-      if (ds.algorithms) {
+      if (Object.keys(effectiveAlgorithms).length > 0) {
         squattingContent += `<div class="config-item" style="margin-top: 8px;"><strong>Algorithms:</strong></div>`;
-        if (ds.algorithms.levenshtein !== false) squattingContent += `<div class="config-item" style="margin-left: 16px;">✓ Levenshtein Distance</div>`;
-        if (ds.algorithms.homoglyph !== false) squattingContent += `<div class="config-item" style="margin-left: 16px;">✓ Homoglyph Detection</div>`;
-        if (ds.algorithms.typosquat !== false) squattingContent += `<div class="config-item" style="margin-left: 16px;">✓ Typosquatting</div>`;
-        if (ds.algorithms.combosquat !== false) squattingContent += `<div class="config-item" style="margin-left: 16px;">✓ Combosquatting</div>`;
+        if (effectiveAlgorithms.levenshtein !== false) squattingContent += `<div class="config-item" style="margin-left: 16px;">✓ Levenshtein Distance</div>`;
+        if (effectiveAlgorithms.homoglyph !== false) squattingContent += `<div class="config-item" style="margin-left: 16px;">✓ Homoglyph Detection</div>`;
+        if (effectiveAlgorithms.typosquat !== false) squattingContent += `<div class="config-item" style="margin-left: 16px;">✓ Typosquatting</div>`;
+        if (effectiveAlgorithms.combosquat !== false) squattingContent += `<div class="config-item" style="margin-left: 16px;">✓ Combosquatting</div>`;
       }
       
-      if (ds.protected_domains && ds.protected_domains.length > 0) {
-        squattingContent += `<div class="config-item" style="margin-top: 8px;"><strong>Protected Domains (${ds.protected_domains.length}):</strong></div>`;
-        squattingContent += createExpandableList(ds.protected_domains, 'domains', 10);
+      if (uniqueProtectedDomains.length > 0) {
+        squattingContent += `<div class="config-item" style="margin-top: 8px;"><strong>Protected Domains (${uniqueProtectedDomains.length}):</strong></div>`;
+        squattingContent += createExpandableList(uniqueProtectedDomains, 'domains', 10);
       }
       
       sections.push(createCollapsibleSection('Domain Squatting Detection', squattingContent, false));
@@ -1656,7 +1700,9 @@ class CheckOptions {
     `;
     sections.push(createCollapsibleSection('Configuration Statistics', statsContent, false));
 
-    this.elements.configDisplay.innerHTML = sections.join('');
+    this.elements.configDisplay.replaceChildren(
+      this.createHtmlFragment(sections.join(""))
+    );
     
     // Add event delegation for collapsible sections
     this.elements.configDisplay.querySelectorAll('[data-toggle-section]').forEach(header => {
@@ -1716,13 +1762,18 @@ class CheckOptions {
 
     // Update button text
     if (this.elements.expandCollapseAll) {
-      const icon = this.elements.expandCollapseAll.querySelector(".material-icons");
       if (hasCollapsed) {
-        icon.textContent = "unfold_less";
-        this.elements.expandCollapseAll.innerHTML = '<span class="material-icons">unfold_less</span> Collapse All';
+        this.setButtonIconAndLabel(
+          this.elements.expandCollapseAll,
+          "unfold_less",
+          "Collapse All"
+        );
       } else {
-        icon.textContent = "unfold_more";
-        this.elements.expandCollapseAll.innerHTML = '<span class="material-icons">unfold_more</span> Expand All';
+        this.setButtonIconAndLabel(
+          this.elements.expandCollapseAll,
+          "unfold_more",
+          "Expand All"
+        );
       }
     }
   }
@@ -1735,21 +1786,18 @@ class CheckOptions {
 
     // Update button text and icon
     if (this.elements.toggleConfigView) {
-      const icon =
-        this.elements.toggleConfigView.querySelector(".material-icons");
-      const text =
-        this.elements.toggleConfigView.querySelector(
-          ".material-icons"
-        ).nextSibling;
-
       if (this.configViewMode === "raw") {
-        icon.textContent = "view_list";
-        this.elements.toggleConfigView.innerHTML =
-          '<span class="material-icons">view_list</span> Show Formatted';
+        this.setButtonIconAndLabel(
+          this.elements.toggleConfigView,
+          "view_list",
+          "Show Formatted"
+        );
       } else {
-        icon.textContent = "code";
-        this.elements.toggleConfigView.innerHTML =
-          '<span class="material-icons">code</span> Show Raw JSON';
+        this.setButtonIconAndLabel(
+          this.elements.toggleConfigView,
+          "code",
+          "Show Raw JSON"
+        );
       }
     }
 
@@ -1802,11 +1850,10 @@ class CheckOptions {
     if (!this.currentConfigData || !this.elements.configDisplay) return;
 
     if (this.configViewMode === "raw") {
-      this.elements.configDisplay.innerHTML = `<div class="config-raw-json">${JSON.stringify(
-        this.currentConfigData,
-        null,
-        2
-      )}</div>`;
+      const raw = document.createElement("div");
+      raw.className = "config-raw-json";
+      raw.textContent = JSON.stringify(this.currentConfigData, null, 2);
+      this.elements.configDisplay.replaceChildren(raw);
     } else {
       this.displayConfigInCard(this.currentConfigData);
     }
@@ -1866,8 +1913,13 @@ class CheckOptions {
     if (logs.length === 0) {
       const item = document.createElement("div");
       item.className = "log-entry";
-      item.innerHTML =
-        '<div class="log-column" style="grid-column: 1 / -1; text-align: center; color: #9ca3af;">No logs available</div>';
+      const empty = document.createElement("div");
+      empty.className = "log-column";
+      empty.style.gridColumn = "1 / -1";
+      empty.style.textAlign = "center";
+      empty.style.color = "#9ca3af";
+      empty.textContent = "No logs available";
+      item.appendChild(empty);
       this.elements.logsList.appendChild(item);
       return;
     }
@@ -1925,7 +1977,7 @@ class CheckOptions {
       // Expand icon
       const expandIcon = document.createElement("div");
       expandIcon.className = "log-expand-icon";
-      expandIcon.innerHTML = "▶";
+      expandIcon.textContent = "▶";
 
       // Append all columns to main row
       mainRow.appendChild(timestamp);
@@ -1939,7 +1991,9 @@ class CheckOptions {
       // Details section (initially hidden)
       const detailsSection = document.createElement("div");
       detailsSection.className = "log-entry-details";
-      detailsSection.innerHTML = this.createLogDetailsHTML(log);
+      detailsSection.replaceChildren(
+        this.createHtmlFragment(this.createLogDetailsHTML(log))
+      );
 
       // Append both main row and details to the item
       item.appendChild(mainRow);
@@ -2281,13 +2335,21 @@ class CheckOptions {
       await navigator.clipboard.writeText(decodedText);
 
       // Visual feedback
-      const originalText = button.innerHTML;
-      button.innerHTML =
-        '<span class="material-icons" style="font-size: 14px;">check</span>';
+      const icon = button.querySelector(".material-icons");
+      const originalIcon = icon ? icon.textContent : "";
+      if (icon) {
+        icon.textContent = "check";
+      } else {
+        button.textContent = "✓";
+      }
       button.classList.add("copied");
 
       setTimeout(() => {
-        button.innerHTML = originalText;
+        if (icon) {
+          icon.textContent = originalIcon || "content_copy";
+        } else {
+          button.textContent = "";
+        }
         button.classList.remove("copied");
       }, 2000);
     } catch (err) {
@@ -2305,13 +2367,21 @@ class CheckOptions {
       document.body.removeChild(textArea);
 
       // Visual feedback
-      const originalText = button.innerHTML;
-      button.innerHTML =
-        '<span class="material-icons" style="font-size: 14px;">check</span>';
+      const icon = button.querySelector(".material-icons");
+      const originalIcon = icon ? icon.textContent : "";
+      if (icon) {
+        icon.textContent = "check";
+      } else {
+        button.textContent = "✓";
+      }
       button.classList.add("copied");
 
       setTimeout(() => {
-        button.innerHTML = originalText;
+        if (icon) {
+          icon.textContent = originalIcon || "content_copy";
+        } else {
+          button.textContent = "";
+        }
         button.classList.remove("copied");
       }, 2000);
     }
@@ -2345,9 +2415,19 @@ class CheckOptions {
 
   // Decode HTML entities back to original text
   decodeHtml(html) {
-    const txt = document.createElement("textarea");
-    txt.innerHTML = html;
-    return txt.value;
+    if (!html) return "";
+    const entities = {
+      "&amp;": "&",
+      "&lt;": "<",
+      "&gt;": ">",
+      "&quot;": '"',
+      "&#039;": "'",
+      "&#39;": "'",
+    };
+    return String(html).replace(
+      /&amp;|&lt;|&gt;|&quot;|&#039;|&#39;/g,
+      (m) => entities[m] || m
+    );
   }
 
   // Mobile device detection
@@ -2436,8 +2516,8 @@ class CheckOptions {
           customBranding: {
             companyName: "CyberDrain",
             productName: "Check Enterprise",
-            supportUrl: "https://support.cyberdrain.com",
-            privacyPolicyUrl: "https://cyberdrain.com/privacy",
+            supportUrl: "",
+            privacyPolicyUrl: "",
             aboutUrl: "",
             primaryColor: "#F77F00",
             logoUrl:
@@ -2584,6 +2664,7 @@ class CheckOptions {
       customRulesUrl: this.elements.customRulesUrl,
       updateInterval: this.elements.updateInterval,
       urlAllowlist: this.elements.urlAllowlist,
+      domainSquatting: this.elements.domainSquattingEnabled,
       enableDebugLogging: this.elements.enableDebugLogging,
       // Note: enableDeveloperConsoleLogging is excluded - should remain available for debugging
       // Branding fields (if customBranding policy is present)
@@ -2659,6 +2740,7 @@ class CheckOptions {
       this.elements.customRulesUrl,
       this.elements.updateInterval,
       this.elements.urlAllowlist,
+      this.elements.domainSquattingEnabled,
       this.elements.enableDebugLogging,
       this.elements.companyName,
       this.elements.companyURL,
@@ -2948,7 +3030,11 @@ class CheckOptions {
       log.event?.type === "threat_detected" ||
       log.event?.type === "content_threat_detected"
     ) {
-      return "HIGH";
+      const severity = log.event?.severity;
+      if (severity) {
+        return severity.toUpperCase();
+      }
+      return "MEDIUM";
     }
     if (log.category === "security") {
       return "MEDIUM";
@@ -3030,7 +3116,7 @@ class CheckOptions {
       log.event?.type === "content_threat_detected" ||
       log.event?.type === "threat_detected"
     ) {
-      return "BLOCKED";
+      return "WARNED";
     }
     if (log.event?.type === "url_access") {
       return "ALLOWED";
@@ -3164,8 +3250,8 @@ class CheckOptions {
     try {
       // Show a loading indicator
       if (this.elements.refreshLogs) {
-        const originalText = this.elements.refreshLogs.innerHTML;
-        this.elements.refreshLogs.innerHTML = "🔄 Refreshing...";
+        const originalText = this.elements.refreshLogs.textContent;
+        this.elements.refreshLogs.textContent = "🔄 Refreshing...";
         this.elements.refreshLogs.disabled = true;
 
         // Reload the logs
@@ -3175,7 +3261,7 @@ class CheckOptions {
         this.showToast("Logs refreshed successfully", "success");
 
         // Restore button state
-        this.elements.refreshLogs.innerHTML = originalText;
+        this.elements.refreshLogs.textContent = originalText;
         this.elements.refreshLogs.disabled = false;
       } else {
         // Fallback if button element not found
@@ -3188,10 +3274,31 @@ class CheckOptions {
 
       // Restore button state on error
       if (this.elements.refreshLogs) {
-        this.elements.refreshLogs.innerHTML = "Refresh";
+        this.elements.refreshLogs.textContent = "Refresh";
         this.elements.refreshLogs.disabled = false;
       }
     }
+  }
+
+  createHtmlFragment(html) {
+    const fragment = document.createDocumentFragment();
+    if (!html) return fragment;
+
+    const parser = new DOMParser();
+    const parsed = parser.parseFromString(String(html), "text/html");
+    Array.from(parsed.body.childNodes).forEach((node) => {
+      fragment.appendChild(document.importNode(node, true));
+    });
+
+    return fragment;
+  }
+
+  setButtonIconAndLabel(button, iconName, label) {
+    if (!button) return;
+    const icon = document.createElement("span");
+    icon.className = "material-icons";
+    icon.textContent = iconName;
+    button.replaceChildren(icon, document.createTextNode(` ${label}`));
   }
 
   async clearLogs() {
@@ -3670,16 +3777,34 @@ function renderConfigSummary(config) {
   if (!config || !config.phishing_indicators) return;
   // Show only code-driven indicator count
   const codeDrivenCount = config.phishing_indicators.filter(r => r.code_driven).length;
-  codeDrivenDiv.innerHTML = `<div class="config-item"><strong>Code-Driven Indicators:</strong> <span class="config-value">${codeDrivenCount}</span></div>`;
+  const codeItem = document.createElement('div');
+  codeItem.className = 'config-item';
+  const codeLabel = document.createElement('strong');
+  codeLabel.textContent = 'Code-Driven Indicators:';
+  const codeValue = document.createElement('span');
+  codeValue.className = 'config-value';
+  codeValue.textContent = String(codeDrivenCount);
+  codeItem.appendChild(codeLabel);
+  codeItem.appendChild(document.createTextNode(' '));
+  codeItem.appendChild(codeValue);
+  codeDrivenDiv.replaceChildren(codeItem);
   // Show some key settings
-  keySettingsUl.innerHTML = '';
-  if (config.version) keySettingsUl.innerHTML += `<li><strong>Rules Version:</strong> ${config.version}</li>`;
-  if (config.lastUpdated) keySettingsUl.innerHTML += `<li><strong>Last Updated:</strong> ${config.lastUpdated}</li>`;
+  keySettingsUl.replaceChildren();
+  const appendSetting = (label, value) => {
+    const li = document.createElement('li');
+    const strong = document.createElement('strong');
+    strong.textContent = `${label}:`;
+    li.appendChild(strong);
+    li.appendChild(document.createTextNode(` ${value}`));
+    keySettingsUl.appendChild(li);
+  };
+  if (config.version) appendSetting('Rules Version', config.version);
+  if (config.lastUpdated) appendSetting('Last Updated', config.lastUpdated);
   if (config.detection_settings && config.detection_settings.block_threshold !== undefined) {
-    keySettingsUl.innerHTML += `<li><strong>Block Threshold:</strong> ${config.detection_settings.block_threshold}</li>`;
+    appendSetting('Block Threshold', config.detection_settings.block_threshold);
   }
   if (config.detection_settings && config.detection_settings.warn_threshold !== undefined) {
-    keySettingsUl.innerHTML += `<li><strong>Warn Threshold:</strong> ${config.detection_settings.warn_threshold}</li>`;
+    appendSetting('Warn Threshold', config.detection_settings.warn_threshold);
   }
 }
 

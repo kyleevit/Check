@@ -37,6 +37,7 @@
     "^https:\\/\\/([a-zA-Z0-9-]+\\.)*xbox\\.com$",
     "^https:\\/\\/([a-zA-Z0-9-]+\\.)*mcas\\.ms$",
     "^https:\\/\\/github\\.com$",
+    "^https:\\/\\/raw\\.githubusercontent\\.com$",
     "^https:\\/\\/([a-zA-Z0-9-]+\\.)*cloud\\.microsoft$",
     "^https:\\/\\/([a-zA-Z0-9-]+\\.)*powerbi\\.com$"
   ],
@@ -916,7 +917,7 @@
               "event.shiftKey",
               "event.keyCode"
             ],
-            "min_matches": 2
+            "min_matches": 5
           },
           {
             "type": "not_if_contains",
@@ -984,7 +985,7 @@
                   "String.fromCharCode",
                   "fromCharCode"
                 ],
-                "min_matches": 1
+                "min_matches": 3
               },
               {
                 "type": "substring_present",
@@ -1047,17 +1048,30 @@
       "id": "phi_019_malicious_obfuscation",
       "code_driven": true,
       "code_logic": {
-        "type": "substring_or_regex",
-        "substrings": [
-          "atob(",
-          "unescape(",
-          "eval(",
-          ".split('')",
-          ".reverse()",
-          "String.fromCharCode("
-        ],
-        "regex": "(?:(?:var|let|const)\\s+\\w+\\s*=\\s*(?:atob|unescape)\\([^)]+\\);\\s*eval\\(\\w+\\)|\\w+\\.split\\(['\"]['\"]\\)\\.reverse\\(\\)\\.join\\(['\"]['\"]\\)|String\\.fromCharCode\\((?:\\d+,\\s*){10,}\\d+\\))",
-        "flags": "i"
+        "type": "all_of",
+        "operations": [
+          {
+            "type": "obfuscation_check",
+            "indicators": [
+              "atob(",
+              "unescape(",
+              "eval(",
+              ".split('')",
+              ".reverse()",
+              "String.fromCharCode("
+            ],
+            "min_matches": 2
+          },
+          {
+            "type": "substring_present",
+            "values": [
+              "eval(",
+              "atob(",
+              "unescape(",
+              "String.fromCharCode("
+            ]
+          }
+        ]
       },
       "pattern": "(?:(?:var|let|const)\\s+\\w+\\s*=\\s*(?:atob|unescape)\\([^)]+\\);\\s*eval\\(\\w+\\)|\\w+\\.split\\(['\"]['\"]\\)\\.reverse\\(\\)\\.join\\(['\"]['\"]\\)|String\\.fromCharCode\\((?:\\d+,\\s*){10,}\\d+\\))",
       "flags": "i",
@@ -1934,7 +1948,6 @@
   },
   "domain_squatting": {
     "description": "Domain squatting detection configuration to protect against typosquatting, homoglyphs, and combosquatting attacks",
-    "enabled": true,
     "action": "block",
     "deviation_threshold": 2,
     "algorithms": {
@@ -1974,7 +1987,8 @@
       "zoom.us",
       "slack.com",
       "atlassian.com",
-      "shopify.com"
+      "shopify.com",
+      "githubusercontent.com"
     ],
     "severity": "high",
     "log_detections": true

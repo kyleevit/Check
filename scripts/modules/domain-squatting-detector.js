@@ -9,6 +9,9 @@ export class DomainSquattingDetector {
   constructor() {
     this.protectedDomains = [];
     this.enabled = true;
+    this.action = 'block';
+    this.minimumSeverity = 'high';
+    this.logDetections = true;
     this.deviationThreshold = 2; // Maximum Levenshtein distance
     this.algorithms = {
       levenshtein: true,
@@ -133,17 +136,39 @@ export class DomainSquattingDetector {
   /**
    * Initialize with configuration
    */
-  async initialize(config, urlAllowlist = []) {
+  async initialize(rulesConfig = {}, runtimeConfig = {}) {
     try {
-      if (config.domain_squatting) {
-        this.enabled = config.domain_squatting.enabled !== false;
-        this.protectedDomains = config.domain_squatting.protected_domains || [];
-        this.deviationThreshold = config.domain_squatting.deviation_threshold || 2;
-        
-        if (config.domain_squatting.algorithms) {
-          this.algorithms = { ...this.algorithms, ...config.domain_squatting.algorithms };
-        }
-      }
+      const rulesDomainSquatting = rulesConfig?.domain_squatting || {};
+      const runtimeDomainSquatting = runtimeConfig?.domainSquatting || {};
+
+      this.enabled = runtimeDomainSquatting.enabled !== false;
+      this.protectedDomains = rulesDomainSquatting.protected_domains || [];
+      this.deviationThreshold =
+        runtimeDomainSquatting.deviationThreshold ||
+        rulesDomainSquatting.deviation_threshold ||
+        2;
+      this.action =
+        runtimeDomainSquatting.Action ||
+        runtimeDomainSquatting.action ||
+        rulesDomainSquatting.action ||
+        'block';
+      this.minimumSeverity =
+        runtimeDomainSquatting.severity ||
+        rulesDomainSquatting.severity ||
+        'high';
+      this.logDetections =
+        runtimeDomainSquatting.logDetections !== undefined
+          ? runtimeDomainSquatting.logDetections
+          : rulesDomainSquatting.log_detections !== false;
+
+      this.algorithms = {
+        ...this.algorithms,
+        ...(rulesDomainSquatting.algorithms || {}),
+        ...(runtimeDomainSquatting.algorithms || {}),
+      };
+
+      // Extract domains from URL allowlist patterns from runtime config
+      const urlAllowlist = runtimeConfig?.urlAllowlist || [];
       
       // Extract domains from URL allowlist patterns
       const allowlistDomains = this.extractDomainsFromAllowlist(urlAllowlist);
@@ -156,8 +181,11 @@ export class DomainSquattingDetector {
       
       logger.log('DomainSquattingDetector initialized:', {
         enabled: this.enabled,
+        action: this.action,
+        minimumSeverity: this.minimumSeverity,
+        logDetections: this.logDetections,
         protectedDomains: this.protectedDomains.length,
-        fromRules: config.domain_squatting?.protected_domains?.length || 0,
+        fromRules: rulesDomainSquatting?.protected_domains?.length || 0,
         fromAllowlist: allowlistDomains.length,
         deviationThreshold: this.deviationThreshold
       });
@@ -173,82 +201,115 @@ export class DomainSquattingDetector {
     if (config.enabled !== undefined) {
       this.enabled = config.enabled;
     }
-    if (config.protected_domains) {
-      this.protectedDomains = config.protected_domains;
+    if (config.protected_domains || config.protectedDomains) {
+      this.protectedDomains = config.protected_domains || config.protectedDomains;
     }
-    if (config.deviation_threshold !== undefined) {
-      this.deviationThreshold = config.deviation_threshold;
+    if (config.action || config.Action) {
+      this.action = config.action || config.Action;
+    }
+    if (config.severity) {
+      this.minimumSeverity = config.severity;
+    }
+    if (config.logDetections !== undefined) {
+      this.logDetections = config.logDetections;
+    }
+    if (config.deviation_threshold !== undefined || config.deviationThreshold !== undefined) {
+      this.deviationThreshold = config.deviation_threshold !== undefined
+        ? config.deviation_threshold
+        : config.deviationThreshold;
     }
     if (config.algorithms) {
       this.algorithms = { ...this.algorithms, ...config.algorithms };
     }
   }
-  
-  /**
-   * Check if a domain is attempting to squat on protected domains
-   * @param {string} testDomain - Domain to test
-   * @returns {Object|null} Detection result or null if no squatting detected
-   */
+
+  getAction() {
+    return this.action || 'block';
+  }
+
+  getSeverityRank(severity) {
+    const rank = {
+      low: 1,
+      medium: 2,
+      high: 3,
+      critical: 4
+    };
+    return rank[String(severity || '').toLowerCase()] || 1;
+  }
+
+  getActionForSeverity(severity) {
+    const configuredAction = this.getAction();
+    if (configuredAction !== 'block') {
+      return configuredAction;
+    }
+
+    const minimumRank = this.getSeverityRank(this.minimumSeverity || 'high');
+    const detectedRank = this.getSeverityRank(severity);
+    return detectedRank >= minimumRank ? 'block' : 'warn';
+  }
+
+  shouldLogDetections() {
+    return this.logDetections !== false;
+  }
+
   checkDomain(testDomain) {
     if (!this.enabled || !testDomain) {
       return null;
     }
-    
-    // Extract domain without subdomain and TLD for comparison
+
     const testBase = this.extractBaseDomain(testDomain);
-    
+
     for (const protectedDomain of this.protectedDomains) {
       const protectedBase = this.extractBaseDomain(protectedDomain);
-      
-      // Skip if domains are identical
+
       if (testBase === protectedBase) {
         continue;
       }
-      
-      // Run detection algorithms
+
       const detections = [];
-      
+
       if (this.algorithms.levenshtein) {
         const levenshteinResult = this.detectLevenshtein(testBase, protectedBase);
         if (levenshteinResult) {
           detections.push(levenshteinResult);
         }
       }
-      
+
       if (this.algorithms.homoglyph) {
         const homoglyphResult = this.detectHomoglyph(testBase, protectedBase);
         if (homoglyphResult) {
           detections.push(homoglyphResult);
         }
       }
-      
+
       if (this.algorithms.typosquat) {
         const typosquatResult = this.detectTyposquat(testBase, protectedBase);
         if (typosquatResult) {
           detections.push(typosquatResult);
         }
       }
-      
+
       if (this.algorithms.combosquat) {
         const combosquatResult = this.detectCombosquat(testBase, protectedBase);
         if (combosquatResult) {
           detections.push(combosquatResult);
         }
       }
-      
-      // If any detection triggered, return result
+
       if (detections.length > 0) {
+        const severity = this.calculateSeverity(detections);
         return {
           detected: true,
           testDomain: testDomain,
           protectedDomain: protectedDomain,
           techniques: detections,
-          severity: this.calculateSeverity(detections),
-          confidence: this.calculateConfidence(detections)
+          severity,
+          confidence: this.calculateConfidence(detections),
+          action: this.getActionForSeverity(severity),
         };
       }
     }
-    
+
     return null;
   }
   

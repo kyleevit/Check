@@ -23,6 +23,10 @@ $testConfig = @{
   enableDebugLogging = 1
 }
 
+$testDomainSquatting = @{
+  enabled = 1
+}
+
 # Custom branding test values
 $testBranding = @{
   companyName = "Test Company"
@@ -51,6 +55,12 @@ function Set-TestPolicies {
     $type = if ($value -is [int]) { "DWord" } else { "String" }
     New-ItemProperty -Path $PolicyKey -Name $key -PropertyType $type -Value $value -Force | Out-Null
   }
+
+  $domainSquattingKey = "$PolicyKey\domainSquatting"
+  if (!(Test-Path $domainSquattingKey)) {
+    New-Item -Path $domainSquattingKey -Force | Out-Null
+  }
+  New-ItemProperty -Path $domainSquattingKey -Name "enabled" -PropertyType DWord -Value $testDomainSquatting.enabled -Force | Out-Null
   
   $brandingKey = "$PolicyKey\customBranding"
   if (!(Test-Path $brandingKey)) {
@@ -97,6 +107,12 @@ function Show-CurrentPolicies {
     if (Test-Path $genericWebhookKey) {
       Write-Output "`nGeneric Webhook:"
       Get-ItemProperty -Path $genericWebhookKey | Format-List
+    }
+
+    $domainSquattingKey = "$PolicyKey\domainSquatting"
+    if (Test-Path $domainSquattingKey) {
+      Write-Output "`nDomain Squatting:"
+      Get-ItemProperty -Path $domainSquattingKey | Format-List
     }
   } else {
     Write-Output "No policies set at: $PolicyKey"

@@ -758,6 +758,14 @@ function toggleTechnicalDetails() {
 window.toggleTechnicalDetails = toggleTechnicalDetails;
 
 // Populate technical details from parsed data
+function setSeverityBadge(severityElement, severityClass, severityText) {
+  if (!severityElement) return;
+  const badge = document.createElement("span");
+  badge.className = `tech-badge ${severityClass || "high"}`;
+  badge.textContent = severityText;
+  severityElement.replaceChildren(badge);
+}
+
 function populateTechnicalDetails(details) {
   console.log("=== POPULATING TECHNICAL DETAILS ===");
   console.log("Full details object:", details);
@@ -786,7 +794,7 @@ function populateTechnicalDetails(details) {
       const severityElement = document.getElementById("techSeverity");
       const severityMap = { critical: "CRITICAL", high: "HIGH", medium: "MEDIUM", low: "LOW" };
       const severityText = severityMap[details.severity] || details.severity.toUpperCase();
-      severityElement.innerHTML = `<span class="tech-badge ${details.severity}">${severityText}</span>`;
+      setSeverityBadge(severityElement, details.severity, severityText);
       
       // Populate techniques as indicators
       populatePhishingIndicatorsList(details.techniques, details);
@@ -897,13 +905,17 @@ function populateTechnicalDetails(details) {
         (severityOrder[a] || 0) > (severityOrder[b] || 0) ? a : b
       );
       const severityElement = document.getElementById("techSeverity");
-      severityElement.innerHTML = `<span class="tech-badge ${highestSeverity}">${highestSeverity.toUpperCase()}</span>`;
+      setSeverityBadge(
+        severityElement,
+        highestSeverity,
+        highestSeverity.toUpperCase()
+      );
       console.log("Highest severity set to:", highestSeverity);
     } else {
       // Fallback: if we have threats but no severity, assume "high" based on the fact it was blocked
       if (indicatorCount > 0) {
         const severityElement = document.getElementById("techSeverity");
-        severityElement.innerHTML = `<span class="tech-badge high">HIGH</span>`;
+        setSeverityBadge(severityElement, "high", "HIGH");
         console.log("Set fallback severity to HIGH");
       }
     }
@@ -958,61 +970,98 @@ function populatePhishingIndicatorsList(indicators, details) {
         (t) => t.description && !t.description.includes("legitimacy score")
       );
       if (nonSummaryThreats.length > 0) {
-        indicatorText = nonSummaryThreats
-          .map(
-            (threat) =>
-              `• ${threat.id || threat.type || "Indicator"}: ${
-                threat.description
-              }`
-          )
-          .join("<br>");
+        const fragment = document.createDocumentFragment();
+        nonSummaryThreats.forEach((threat, index) => {
+          const line = `• ${threat.id || threat.type || "Indicator"}: ${
+            threat.description
+          }`;
+          fragment.appendChild(document.createTextNode(line));
+          if (index < nonSummaryThreats.length - 1) {
+            fragment.appendChild(document.createElement("br"));
+          }
+        });
+        container.replaceChildren(fragment);
+        return;
       }
     }
 
-    container.innerHTML = indicatorText;
+    container.textContent = indicatorText;
     return;
   }
 
   // Handle domain squatting techniques differently
   if (details.type === "domain_squatting") {
     console.log("Displaying domain squatting techniques");
-    const techniquesHTML = indicators
-      .map((technique) => {
-        const techniqueName = technique.technique || technique.id || "Unknown Technique";
-        const description = technique.description || "Domain similarity detected";
-        
-        return `<div style="margin-bottom: 8px; padding: 6px; background: #fef3c7; border-radius: 4px; border-left: 3px solid #f59e0b;">
-        <strong>${techniqueName}</strong><br>
-        <span style="color: #6b7280; font-size: 11px;">${description}</span>
-      </div>`;
-      })
-      .join("");
-    
-    container.innerHTML = techniquesHTML;
+    const fragment = document.createDocumentFragment();
+    indicators.forEach((technique) => {
+      const techniqueName =
+        technique.technique || technique.id || "Unknown Technique";
+      const description =
+        technique.description || "Domain similarity detected";
+
+      const item = document.createElement("div");
+      item.style.marginBottom = "8px";
+      item.style.padding = "6px";
+      item.style.background = "#fef3c7";
+      item.style.borderRadius = "4px";
+      item.style.borderLeft = "3px solid #f59e0b";
+
+      const title = document.createElement("strong");
+      title.textContent = techniqueName;
+
+      const descriptionSpan = document.createElement("span");
+      descriptionSpan.style.color = "#6b7280";
+      descriptionSpan.style.fontSize = "11px";
+      descriptionSpan.textContent = description;
+
+      item.appendChild(title);
+      item.appendChild(document.createElement("br"));
+      item.appendChild(descriptionSpan);
+      fragment.appendChild(item);
+    });
+
+    container.replaceChildren(fragment);
     console.log("Populated domain squatting techniques with", indicators.length, "techniques");
     return;
   }
 
   // Create formatted list of indicators for phishing
-  const indicatorHTML = indicators
-    .map((indicator) => {
-      const id = indicator.id || indicator.type || "Unknown";
-      const description =
-        indicator.description || indicator.reason || "Detected";
-      const severity = indicator.severity
-        ? ` <span class="tech-badge ${
-            indicator.severity
-          }" style="margin-left: 8px;">${indicator.severity.toUpperCase()}</span>`
-        : "";
+  const fragment = document.createDocumentFragment();
+  indicators.forEach((indicator) => {
+    const id = indicator.id || indicator.type || "Unknown";
+    const description = indicator.description || indicator.reason || "Detected";
 
-      return `<div style="margin-bottom: 8px; padding: 6px; background: #f9fafb; border-radius: 4px; border-left: 3px solid #f77f00;">
-      <strong>${id}</strong>${severity}<br>
-      <span style="color: #6b7280; font-size: 11px;">${description}</span>
-    </div>`;
-    })
-    .join("");
+    const item = document.createElement("div");
+    item.style.marginBottom = "8px";
+    item.style.padding = "6px";
+    item.style.background = "#f9fafb";
+    item.style.borderRadius = "4px";
+    item.style.borderLeft = "3px solid #f77f00";
 
-  container.innerHTML = indicatorHTML;
+    const title = document.createElement("strong");
+    title.textContent = id;
+    item.appendChild(title);
+
+    if (indicator.severity) {
+      const severityBadge = document.createElement("span");
+      severityBadge.className = `tech-badge ${indicator.severity}`;
+      severityBadge.style.marginLeft = "8px";
+      severityBadge.textContent = indicator.severity.toUpperCase();
+      item.appendChild(document.createTextNode(" "));
+      item.appendChild(severityBadge);
+    }
+
+    const descriptionSpan = document.createElement("span");
+    descriptionSpan.style.color = "#6b7280";
+    descriptionSpan.style.fontSize = "11px";
+    descriptionSpan.textContent = description;
+
+    item.appendChild(document.createElement("br"));
+    item.appendChild(descriptionSpan);
+    fragment.appendChild(item);
+  });
+
+  container.replaceChildren(fragment);
   console.log(
     "Populated phishing indicators list with",
     indicators.length,

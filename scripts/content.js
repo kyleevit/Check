@@ -1717,15 +1717,6 @@ if (window.checkExtensionLoaded) {
    */
   function setupDynamicScriptMonitoring() {
     try {
-      // Override eval to detect dynamic script execution
-      const originalEval = window.eval;
-      window.eval = function (code) {
-        scanDynamicScript(code, "eval").catch((error) => {
-          logger.warn("Dynamic script scan error (eval):", error);
-        });
-        return originalEval.call(this, code);
-      };
-
       // Override Function constructor
       const originalFunction = window.Function;
       window.Function = function () {
@@ -2071,7 +2062,7 @@ if (window.checkExtensionLoaded) {
       );
       const resources = [...source.matchAll(resourceRegex)].map((m) => m[1]);
 
-      if (resources.length === 0) return false;
+      if (resources.length === 0) return true;
 
       // Check if ALL resources are from allowed domains
       return resources.every((res) =>
@@ -2190,6 +2181,344 @@ if (window.checkExtensionLoaded) {
     }
   }
 
+  function getPortableDetectionPrimitives() {
+    return {
+      substring_present: (source, params) => {
+        const lower = source.toLowerCase();
+        return (params.values || []).some((val) =>
+          lower.includes(String(val).toLowerCase())
+        );
+      },
+      all_substrings_present: (source, params) => {
+        const lower = source.toLowerCase();
+        return (params.values || []).every((val) =>
+          lower.includes(String(val).toLowerCase())
+        );
+      },
+      substring_proximity: (source, params) => {
+        const lower = source.toLowerCase();
+        const word1 = String(params.word1 || "").toLowerCase();
+        const word2 = String(params.word2 || "").toLowerCase();
+        const maxDistance = params.max_distance || 0;
+
+        const idx1 = lower.indexOf(word1);
+        if (idx1 === -1) return false;
+
+        const searchStart = Math.max(0, idx1 - maxDistance);
+        const searchEnd = Math.min(
+          lower.length,
+          idx1 + word1.length + maxDistance
+        );
+        const chunk = lower.slice(searchStart, searchEnd);
+        return chunk.includes(word2);
+      },
+      substring_count: (source, params) => {
+        const lower = source.toLowerCase();
+        const count = (params.substrings || []).filter((sub) =>
+          lower.includes(String(sub).toLowerCase())
+        ).length;
+        return count >= (params.min_count || 0) && count <= (params.max_count || Infinity);
+      },
+      has_but_not: (source, params, context) => {
+        const lower = source.toLowerCase();
+        if (params.check_url_only && context.currentUrl) {
+          const urlLower = context.currentUrl.toLowerCase();
+          const hasRequired = (params.required || []).some((req) =>
+            urlLower.includes(String(req).toLowerCase())
+          );
+          if (!hasRequired) return false;
+          const hasProhibited = (params.prohibited || []).some((pro) =>
+            urlLower.includes(String(pro).toLowerCase())
+          );
+          return !hasProhibited;
+        }
+
+        const hasRequired = (params.required || []).some((req) =>
+          lower.includes(String(req).toLowerCase())
+        );
+        if (!hasRequired) return false;
+        const hasProhibited = (params.prohibited || []).some((pro) =>
+          lower.includes(String(pro).toLowerCase())
+        );
+        return !hasProhibited;
+      },
+      pattern_count: (source, params) => {
+        let totalCount = 0;
+        for (const pattern of params.patterns || []) {
+          const regex = new RegExp(pattern, params.flags || "gi");
+          const matches = source.match(regex);
+          totalCount += matches ? matches.length : 0;
+        }
+        return (
+          totalCount >= (params.min_count || 0) &&
+          totalCount <= (params.max_count || Infinity)
+        );
+      },
+      word_density: (source, params) => {
+        const lower = source.toLowerCase();
+        let totalCount = 0;
+        for (const word of params.words || []) {
+          const regex = new RegExp(`\\b${String(word).toLowerCase()}\\b`, "g");
+          const matches = lower.match(regex);
+          totalCount += matches ? matches.length : 0;
+        }
+        const density = totalCount / Math.max(1, source.length / 1000);
+        return density >= (params.min_density || 0);
+      },
+      substring_before: (source, params) => {
+        const lower = source.toLowerCase();
+        const idx1 = lower.indexOf(String(params.first || "").toLowerCase());
+        const idx2 = lower.indexOf(String(params.second || "").toLowerCase());
+        return idx1 !== -1 && idx2 !== -1 && idx1 < idx2;
+      },
+      substring_in_range: (source, params) => {
+        const lower = source.toLowerCase();
+        const idx = lower.indexOf(String(params.substring || "").toLowerCase());
+        if (idx === -1) return false;
+        return idx >= (params.min_position || 0) && idx <= (params.max_position || Infinity);
+      },
+      all_of: (source, params, context) => {
+        return (params.operations || []).every((op) =>
+          evaluatePrimitivePortable(source, op, context)
+        );
+      },
+      any_of: (source, params, context) => {
+        return (params.operations || []).some((op) =>
+          evaluatePrimitivePortable(source, op, context)
+        );
+      },
+      resource_pattern: (source, params) => {
+        const pattern = new RegExp(params.pattern, params.flags || "i");
+        const urlRegex = /(?:src|href|action)=["']([^"']+)["']/gi;
+        const urls = [...source.matchAll(urlRegex)].map((m) => m[1]);
+        const matchCount = urls.filter((url) => pattern.test(url)).length;
+        return (
+          matchCount >= (params.min_count || 1) &&
+          matchCount <= (params.max_count || Infinity)
+        );
+      },
+      resource_from_domain: (source, params) => {
+        const resourceType = params.resource_type;
+        const allowedDomains = params.allowed_domains || [];
+        const resourceRegex = new RegExp(
+          `(?:src|href)=["']([^"']*${resourceType}[^"']*)["']`,
+          "gi"
+        );
+        const resources = [...source.matchAll(resourceRegex)].map((m) => m[1]);
+        if (resources.length === 0) return true;
+        return resources.every((res) =>
+          allowedDomains.some((domain) => res.includes(domain))
+        );
+      },
+      multi_proximity: (source, params) => {
+        const lower = source.toLowerCase();
+        for (const pair of params.pairs || []) {
+          const word1 = String(pair.words?.[0] || "").toLowerCase();
+          const word2 = String(pair.words?.[1] || "").toLowerCase();
+          const maxDist = pair.max_distance || 0;
+          let idx1 = -1;
+          while ((idx1 = lower.indexOf(word1, idx1 + 1)) !== -1) {
+            const searchStart = Math.max(0, idx1 - maxDist);
+            const searchEnd = Math.min(
+              lower.length,
+              idx1 + word1.length + maxDist
+            );
+            if (lower.slice(searchStart, searchEnd).includes(word2)) {
+              return true;
+            }
+          }
+        }
+        return false;
+      },
+      form_action_check: (source, params) => {
+        const formRegex = /<form[^>]*action=["']([^"']*)["'][^>]*>/gi;
+        const actions = [...source.matchAll(formRegex)].map((m) => m[1]);
+        if (actions.length === 0) return false;
+        const requiredDomains = params.required_domains || [];
+        const suspiciousForms = actions.filter(
+          (action) => !requiredDomains.some((domain) => action.includes(domain))
+        );
+        return suspiciousForms.length > 0;
+      },
+      obfuscation_check: (source, params) => {
+        let matchCount = 0;
+        for (const indicator of params.indicators || []) {
+          if (source.includes(indicator)) {
+            matchCount++;
+          }
+        }
+        return matchCount >= (params.min_matches || 1);
+      },
+      not_if_contains: (source, params) => {
+        const lower = source.toLowerCase();
+        const hasProhibited = (params.prohibited || []).some((pro) =>
+          lower.includes(String(pro).toLowerCase())
+        );
+        return !hasProhibited;
+      },
+    };
+  }
+
+  function evaluatePrimitivePortable(source, operation, context = {}) {
+    const primitives = getPortableDetectionPrimitives();
+    const primitive = primitives[operation?.type];
+    if (!primitive) {
+      return false;
+    }
+
+    try {
+      const cacheKey = `${operation.type}:${JSON.stringify(operation)}`;
+      if (context.cache && context.cache.has(cacheKey)) {
+        return context.cache.get(cacheKey);
+      }
+
+      const result = primitive(source, operation, context);
+      const finalResult = operation.invert ? !result : result;
+      if (context.cache) {
+        context.cache.set(cacheKey, finalResult);
+      }
+      return finalResult;
+    } catch {
+      return false;
+    }
+  }
+
+  function evaluateIndicatorPortable(indicator, pageSource, pageText, currentUrl) {
+    let matches = false;
+    let matchDetails = "";
+
+    if (indicator.code_driven === true && indicator.code_logic) {
+      matches = evaluatePrimitivePortable(pageSource, indicator.code_logic, {
+        cache: new Map(),
+        currentUrl,
+      });
+      if (matches) {
+        matchDetails = "primitive match";
+      }
+
+      const lowerSource = pageSource.toLowerCase();
+
+      if (!matches && indicator.code_logic.type === "substring") {
+        matches = (indicator.code_logic.substrings || []).every((sub) =>
+          pageSource.includes(sub)
+        );
+        if (matches) matchDetails = "page source (substring match)";
+      } else if (!matches && indicator.code_logic.type === "substring_not") {
+        matches =
+          (indicator.code_logic.substrings || []).every((sub) =>
+            pageSource.includes(sub)
+          ) &&
+          (indicator.code_logic.not_substrings || []).every(
+            (sub) => !pageSource.includes(sub)
+          );
+        if (matches) matchDetails = "page source (substring + not match)";
+      } else if (!matches && indicator.code_logic.type === "allowlist") {
+        const isAllowlisted = (indicator.code_logic.allowlist || []).some(
+          (phrase) => lowerSource.includes(String(phrase).toLowerCase())
+        );
+        if (!isAllowlisted && indicator.code_logic.optimized_pattern) {
+          const optPattern = new RegExp(
+            indicator.code_logic.optimized_pattern,
+            indicator.flags || "i"
+          );
+          if (optPattern.test(pageSource)) {
+            matches = true;
+            matchDetails = "page source (optimized regex)";
+          }
+        }
+      } else if (
+        !matches &&
+        indicator.code_logic.type === "substring_not_allowlist"
+      ) {
+        const substring = indicator.code_logic.substring;
+        const allowlist = indicator.code_logic.allowlist || [];
+        if (substring && pageSource.includes(substring)) {
+          const isAllowed = allowlist.some((allowed) =>
+            lowerSource.includes(String(allowed).toLowerCase())
+          );
+          if (!isAllowed) {
+            matches = true;
+            matchDetails = "page source (substring not in allowlist)";
+          }
+        }
+      } else if (
+        !matches &&
+        indicator.code_logic.type === "substring_or_regex"
+      ) {
+        const substrings = indicator.code_logic.substrings || [];
+        for (const sub of substrings) {
+          if (lowerSource.includes(String(sub).toLowerCase())) {
+            matches = true;
+            matchDetails = "page source (substring match)";
+            break;
+          }
+        }
+        if (!matches && indicator.code_logic.regex) {
+          const pattern = new RegExp(
+            indicator.code_logic.regex,
+            indicator.code_logic.flags || "i"
+          );
+          if (pattern.test(pageSource)) {
+            matches = true;
+            matchDetails = "page source (regex match)";
+          }
+        }
+      } else if (
+        !matches &&
+        indicator.code_logic.type === "substring_with_exclusions"
+      ) {
+        const excludeList = indicator.code_logic.exclude_if_contains || [];
+        const hasExclusion = excludeList.some((excl) =>
+          lowerSource.includes(String(excl).toLowerCase())
+        );
+        if (!hasExclusion) {
+          if (indicator.code_logic.match_any) {
+            matches = indicator.code_logic.match_any.some((phrase) =>
+              lowerSource.includes(String(phrase).toLowerCase())
+            );
+            if (matches) {
+              matchDetails = "page source (substring with exclusions)";
+            }
+          } else if (indicator.code_logic.match_pattern_parts) {
+            const parts = indicator.code_logic.match_pattern_parts;
+            matches = parts.every((partGroup) =>
+              partGroup.some((part) =>
+                lowerSource.includes(String(part).toLowerCase())
+              )
+            );
+            if (matches) {
+              matchDetails = "page source (pattern parts with exclusions)";
+            }
+          }
+        }
+      }
+    } else if (indicator.pattern) {
+      const pattern = new RegExp(indicator.pattern, indicator.flags || "i");
+      if (pattern.test(pageSource)) {
+        matches = true;
+        matchDetails = "page source";
+      } else if (pattern.test(pageText)) {
+        matches = true;
+        matchDetails = "page text";
+      } else if (pattern.test(currentUrl)) {
+        matches = true;
+        matchDetails = "URL";
+      }
+
+      if (!matches && indicator.additional_checks) {
+        for (const check of indicator.additional_checks) {
+          if (pageSource.includes(check) || pageText.includes(check)) {
+            matches = true;
+            matchDetails = "additional checks";
+            break;
+          }
+        }
+      }
+    }
+
+    return { matches, matchDetails };
+  }
+
   /**
    * Process phishing indicators using Web Worker for background processing
    */
@@ -2203,6 +2532,10 @@ if (window.checkExtensionLoaded) {
       try {
         // Create inline Web Worker for background regex processing
         const workerCode = `
+          ${getPortableDetectionPrimitives.toString()}
+          ${evaluatePrimitivePortable.toString()}
+          ${evaluateIndicatorPortable.toString()}
+
           self.onmessage = function(e) {
             const { indicators, pageSource, pageText, currentUrl } = e.data;
             const threats = [];
@@ -2223,37 +2556,14 @@ if (window.checkExtensionLoaded) {
                 }
 
                 try {
-                  let matches = false;
-                  let matchDetails = "";
-
-                  const pattern = new RegExp(indicator.pattern, indicator.flags || "i");
-
-                  // Test against page source
-                  if (pattern.test(pageSource)) {
-                    matches = true;
-                    matchDetails = "page source";
-                  }
-                  // Test against visible text
-                  else if (pattern.test(pageText)) {
-                    matches = true;
-                    matchDetails = "page text";
-                  }
-                  // Test against URL
-                  else if (pattern.test(currentUrl)) {
-                    matches = true;
-                    matchDetails = "URL";
-                  }
-
-                  // Handle additional_checks
-                  if (!matches && indicator.additional_checks) {
-                    for (const check of indicator.additional_checks) {
-                      if (pageSource.includes(check) || pageText.includes(check)) {
-                        matches = true;
-                        matchDetails = "additional checks";
-                        break;
-                      }
-                    }
-                  }
+                  const evaluation = evaluateIndicatorPortable(
+                    indicator,
+                    pageSource,
+                    pageText,
+                    currentUrl
+                  );
+                  const matches = evaluation.matches;
+                  const matchDetails = evaluation.matchDetails;
 
                   if (matches) {
                     const threat = {
@@ -2408,7 +2718,7 @@ if (window.checkExtensionLoaded) {
         logger.log(`   ${i + 1}. ${ind.id}: ${patternPreview} (${ind.severity})`);
       });
 
-      // If forceMainThreadPhishingProcessing is enabled, skip Web Worker and use main thread directly
+      // If forceMainThreadPhishingProcessing is enabled, skip Web Worker and use main thread directly.
       if (forceMainThreadPhishingProcessing) {
         logger.log(
           "⏱️ DEBUG: Forcing main thread phishing processing (Web Worker disabled by UI toggle)"
@@ -2548,181 +2858,14 @@ if (window.checkExtensionLoaded) {
                 let matches = false;
                 let matchDetails = "";
 
-                // Modular code-driven logic if flagged in rules file
-                if (indicator.code_driven === true && indicator.code_logic) {
-                  if (DetectionPrimitives[indicator.code_logic.type]) {
-                    try {
-                      matches = evaluatePrimitive(
-                        pageSource,
-                        indicator.code_logic,
-                        { cache: new Map(), currentUrl: window.location.href }
-                      );
-                      if (matches) matchDetails = "primitive match";
-                    } catch (primitiveError) {
-                      logger.warn(
-                        `Primitive evaluation failed for ${indicator.id}, falling back:`,
-                        primitiveError.message
-                      );
-                      // Fall through to legacy code-driven logic below
-                    }
-                  }
-                  if (indicator.code_logic.type === "substring") {
-                    // All substrings must be present
-                    matches = (indicator.code_logic.substrings || []).every(
-                      (sub) => pageSource.includes(sub)
-                    );
-                    if (matches) matchDetails = "page source (substring match)";
-                  } else if (indicator.code_logic.type === "substring_not") {
-                    // All substrings must be present, and all not_substrings must be absent
-                    matches =
-                      (indicator.code_logic.substrings || []).every((sub) =>
-                        pageSource.includes(sub)
-                      ) &&
-                      (indicator.code_logic.not_substrings || []).every(
-                        (sub) => !pageSource.includes(sub)
-                      );
-                    if (matches)
-                      matchDetails = "page source (substring + not match)";
-                  } else if (indicator.code_logic.type === "allowlist") {
-                    // If any allowlist phrase is present, skip
-                    const lowerSource = pageSource.toLowerCase();
-                    const isAllowlisted = (
-                      indicator.code_logic.allowlist || []
-                    ).some((phrase) => lowerSource.includes(phrase));
-                    if (!isAllowlisted) {
-                      // Use optimized regex from rules file
-                      if (indicator.code_logic.optimized_pattern) {
-                        const optPattern = new RegExp(
-                          indicator.code_logic.optimized_pattern,
-                          indicator.flags || "i"
-                        );
-                        if (optPattern.test(pageSource)) {
-                          matches = true;
-                          matchDetails = "page source (optimized regex)";
-                        }
-                      }
-                    }
-                  } else if (
-                    indicator.code_logic.type === "substring_not_allowlist"
-                  ) {
-                    // Check if substring is present, then verify it's not from an allowed source
-                    const substring = indicator.code_logic.substring;
-                    const allowlist = indicator.code_logic.allowlist || [];
-
-                    if (substring && pageSource.includes(substring)) {
-                      // Substring found, now check if any allowlisted domain is also present
-                      const lowerSource = pageSource.toLowerCase();
-                      const isAllowed = allowlist.some((allowed) =>
-                        lowerSource.includes(allowed.toLowerCase())
-                      );
-
-                      if (!isAllowed) {
-                        matches = true;
-                        matchDetails =
-                          "page source (substring not in allowlist)";
-                      }
-                    }
-                  } else if (
-                    indicator.code_logic.type === "substring_or_regex"
-                  ) {
-                    // Try fast substring search first, fall back to regex
-                    const substrings = indicator.code_logic.substrings || [];
-                    const lowerSource = pageSource.toLowerCase();
-
-                    // Fast path: check if any substring is present
-                    for (const sub of substrings) {
-                      if (lowerSource.includes(sub.toLowerCase())) {
-                        matches = true;
-                        matchDetails = "page source (substring match)";
-                        break;
-                      }
-                    }
-
-                    // Fallback: use regex if no substring matched
-                    if (!matches && indicator.code_logic.regex) {
-                      const pattern = new RegExp(
-                        indicator.code_logic.regex,
-                        indicator.code_logic.flags || "i"
-                      );
-                      if (pattern.test(pageSource)) {
-                        matches = true;
-                        matchDetails = "page source (regex match)";
-                      }
-                    }
-                  } else if (
-                    indicator.code_logic.type === "substring_with_exclusions"
-                  ) {
-                    // Check for matching patterns but exclude if exclusion phrases are present
-                    const lowerSource = pageSource.toLowerCase();
-
-                    // First check exclusions - if any found, skip this rule entirely
-                    const excludeList =
-                      indicator.code_logic.exclude_if_contains || [];
-                    const hasExclusion = excludeList.some((excl) =>
-                      lowerSource.includes(excl.toLowerCase())
-                    );
-
-                    if (!hasExclusion) {
-                      // No exclusions found, now check for matches
-                      if (indicator.code_logic.match_any) {
-                        // Simple match - check if any phrase is present
-                        matches = indicator.code_logic.match_any.some(
-                          (phrase) => lowerSource.includes(phrase.toLowerCase())
-                        );
-                        if (matches)
-                          matchDetails =
-                            "page source (substring with exclusions)";
-                      } else if (indicator.code_logic.match_pattern_parts) {
-                        // Complex match - all pattern parts must be present
-                        const parts = indicator.code_logic.match_pattern_parts;
-                        matches = parts.every((partGroup) =>
-                          partGroup.some((part) =>
-                            lowerSource.includes(part.toLowerCase())
-                          )
-                        );
-                        if (matches)
-                          matchDetails =
-                            "page source (pattern parts with exclusions)";
-                      }
-                    }
-                  }
-                } else {
-                  // Default: regex-driven logic
-                  const pattern = new RegExp(
-                    indicator.pattern,
-                    indicator.flags || "i"
-                  );
-
-                  // Test against page source
-                  if (pattern.test(pageSource)) {
-                    matches = true;
-                    matchDetails = "page source";
-                  }
-                  // Test against visible text
-                  else if (pattern.test(pageText)) {
-                    matches = true;
-                    matchDetails = "page text";
-                  }
-                  // Test against URL
-                  else if (pattern.test(currentUrl)) {
-                    matches = true;
-                    matchDetails = "URL";
-                  }
-
-                  // Handle additional_checks
-                  if (!matches && indicator.additional_checks) {
-                    for (const check of indicator.additional_checks) {
-                      if (
-                        pageSource.includes(check) ||
-                        pageText.includes(check)
-                      ) {
-                        matches = true;
-                        matchDetails = "additional checks";
-                        break;
-                      }
-                    }
-                  }
-                }
+                const evaluation = evaluateIndicatorPortable(
+                  indicator,
+                  pageSource,
+                  pageText,
+                  currentUrl
+                );
+                matches = evaluation.matches;
+                matchDetails = evaluation.matchDetails;
 
                 // Handle context_required field for conditional detection
                 if (matches && indicator.context_required) {
@@ -5154,11 +5297,14 @@ if (window.checkExtensionLoaded) {
 
         const redirectHostname = extractRedirectHostname(location.href);
         const clientInfo = await extractClientInfo(location.href);
+        const threatAction =
+          severity === "high" && protectionEnabled ? "blocked" : "warned";
 
         logProtectionEvent({
           type: protectionEnabled
             ? "threat_detected"
             : "threat_detected_no_action",
+          action: threatAction,
           url: location.href,
           threatLevel: severity,
           reason: reason,
@@ -5639,9 +5785,30 @@ if (window.checkExtensionLoaded) {
       );
 
       // Immediately redirect to blocking page - no user override option
-      location.replace(blockingPageUrl);
+      try {
+        location.replace(blockingPageUrl);
+        logger.log("Redirected to Chrome blocking page");
+      } catch (redirectError) {
+        logger.warn(
+          "Direct blocked page redirect failed, attempting background tab redirect:",
+          redirectError.message
+        );
 
-      logger.log("Redirected to Chrome blocking page");
+        const redirectResponse = await chrome.runtime.sendMessage({
+          type: "REDIRECT_TO_BLOCKED_PAGE",
+          url: blockingPageUrl,
+        });
+
+        if (redirectResponse?.success) {
+          logger.log("Redirected to blocking page via background script");
+          return;
+        }
+
+        throw new Error(
+          redirectResponse?.error ||
+            "Background redirect failed with unknown error"
+        );
+      }
     } catch (error) {
       logger.error("Failed to redirect to blocking page:", error.message);
 
@@ -5666,17 +5833,58 @@ if (window.checkExtensionLoaded) {
         // CRITICAL: Register overlay before adding to DOM
         registerInjectedElement(overlay);
 
-        overlay.innerHTML = `
-          <div style="max-width: 600px; padding: 40px; text-align: center; font-family: system-ui, -apple-system, sans-serif;">
-            <div style="font-size: 64px; color: #d32f2f; margin-bottom: 24px;">🛡️</div>
-            <h1 style="color: #d32f2f; margin: 0 0 16px 0;">Phishing Site Blocked</h1>
-            <p><strong>Microsoft 365 login page detected on suspicious domain.</strong></p>
-            <p>This site may be attempting to steal your credentials and has been blocked for your protection.</p>
-            <div style="color: #777; font-size: 14px; margin-top: 24px;">Reason: ${reason}</div>
-            <div style="color: #777; font-size: 14px;">Blocked by: Check</div>
-            <div style="color: #777; font-size: 14px;">No override available - contact your administrator if this is incorrect</div>
-          </div>
-        `;
+        const content = document.createElement("div");
+        content.style.maxWidth = "600px";
+        content.style.padding = "40px";
+        content.style.textAlign = "center";
+        content.style.fontFamily = "system-ui, -apple-system, sans-serif";
+
+        const shield = document.createElement("div");
+        shield.style.fontSize = "64px";
+        shield.style.color = "#d32f2f";
+        shield.style.marginBottom = "24px";
+        shield.textContent = "🛡️";
+
+        const title = document.createElement("h1");
+        title.style.color = "#d32f2f";
+        title.style.margin = "0 0 16px 0";
+        title.textContent = "Phishing Site Blocked";
+
+        const paragraphStrong = document.createElement("p");
+        const strong = document.createElement("strong");
+        strong.textContent =
+          "Microsoft 365 login page detected on suspicious domain.";
+        paragraphStrong.appendChild(strong);
+
+        const paragraphDetails = document.createElement("p");
+        paragraphDetails.textContent =
+          "This site may be attempting to steal your credentials and has been blocked for your protection.";
+
+        const reasonLine = document.createElement("div");
+        reasonLine.style.color = "#777";
+        reasonLine.style.fontSize = "14px";
+        reasonLine.style.marginTop = "24px";
+        reasonLine.textContent = `Reason: ${reason}`;
+
+        const blockedByLine = document.createElement("div");
+        blockedByLine.style.color = "#777";
+        blockedByLine.style.fontSize = "14px";
+        blockedByLine.textContent = "Blocked by: Check";
+
+        const noOverrideLine = document.createElement("div");
+        noOverrideLine.style.color = "#777";
+        noOverrideLine.style.fontSize = "14px";
+        noOverrideLine.textContent =
+          "No override available - contact your administrator if this is incorrect";
+
+        content.appendChild(shield);
+        content.appendChild(title);
+        content.appendChild(paragraphStrong);
+        content.appendChild(paragraphDetails);
+        content.appendChild(reasonLine);
+        content.appendChild(blockedByLine);
+        content.appendChild(noOverrideLine);
+        overlay.appendChild(content);
 
         document.body.appendChild(overlay);
 
@@ -5994,28 +6202,98 @@ if (window.checkExtensionLoaded) {
         bannerColor = "linear-gradient(135deg, #ff5722, #d84315)"; // Orange-red for high risk
       }
 
-      // Layout: left branding slot, absolutely centered message block, dismiss button on right.
-      const bannerContent = `
-        <div style="position:relative;display:flex;align-items:center;gap:16px;min-height:56px;padding-right:40px;">
-          <div id="check-banner-left" style="display:flex;align-items:center;gap:12px;z-index:2;"></div>
-          <div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);text-align:center;max-width:60%;z-index:1;pointer-events:none;">
-            <span style="display:block;font-size:24px;margin-bottom:4px;">${bannerIcon}</span>
-            <strong style="display:block;">${bannerTitle}</strong>
-            <small style="opacity:0.95;display:block;margin-top:2px;">${reason}${detailsText}</small>
-          </div>
-          <button onclick="this.closest('#ms365-warning-banner').remove(); document.body.style.marginTop = '0'; window.showingBanner = false;" title="Dismiss" style="
-            position:absolute;right:16px;top:50%;transform:translateY(-50%);background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.3);
-            color:#fff;padding:0;border-radius:4px;cursor:pointer;
-            width:24px;height:24px;min-width:24px;min-height:24px;display:flex;align-items:center;justify-content:center;
-            font-size:14px;font-weight:bold;line-height:1;box-sizing:border-box;font-family:monospace;z-index:3;">×</button>
-        </div>`;
+      const renderBannerContent = (bannerElement) => {
+        if (!bannerElement) return;
+
+        const root = document.createElement("div");
+        root.style.position = "relative";
+        root.style.display = "flex";
+        root.style.alignItems = "center";
+        root.style.gap = "16px";
+        root.style.minHeight = "56px";
+        root.style.paddingRight = "40px";
+
+        const left = document.createElement("div");
+        left.id = "check-banner-left";
+        left.style.display = "flex";
+        left.style.alignItems = "center";
+        left.style.gap = "12px";
+        left.style.zIndex = "2";
+
+        const center = document.createElement("div");
+        center.style.position = "absolute";
+        center.style.left = "50%";
+        center.style.top = "50%";
+        center.style.transform = "translate(-50%,-50%)";
+        center.style.textAlign = "center";
+        center.style.maxWidth = "60%";
+        center.style.zIndex = "1";
+        center.style.pointerEvents = "none";
+
+        const icon = document.createElement("span");
+        icon.style.display = "block";
+        icon.style.fontSize = "24px";
+        icon.style.marginBottom = "4px";
+        icon.textContent = bannerIcon;
+
+        const title = document.createElement("strong");
+        title.style.display = "block";
+        title.textContent = bannerTitle;
+
+        const subtitle = document.createElement("small");
+        subtitle.style.opacity = "0.95";
+        subtitle.style.display = "block";
+        subtitle.style.marginTop = "2px";
+        subtitle.textContent = `${reason}${detailsText}`;
+
+        center.appendChild(icon);
+        center.appendChild(title);
+        center.appendChild(subtitle);
+
+        const dismissButton = document.createElement("button");
+        dismissButton.title = "Dismiss";
+        dismissButton.style.position = "absolute";
+        dismissButton.style.right = "16px";
+        dismissButton.style.top = "50%";
+        dismissButton.style.transform = "translateY(-50%)";
+        dismissButton.style.background = "rgba(255,255,255,0.2)";
+        dismissButton.style.border = "1px solid rgba(255,255,255,0.3)";
+        dismissButton.style.color = "#fff";
+        dismissButton.style.padding = "0";
+        dismissButton.style.borderRadius = "4px";
+        dismissButton.style.cursor = "pointer";
+        dismissButton.style.width = "24px";
+        dismissButton.style.height = "24px";
+        dismissButton.style.minWidth = "24px";
+        dismissButton.style.minHeight = "24px";
+        dismissButton.style.display = "flex";
+        dismissButton.style.alignItems = "center";
+        dismissButton.style.justifyContent = "center";
+        dismissButton.style.fontSize = "14px";
+        dismissButton.style.fontWeight = "bold";
+        dismissButton.style.lineHeight = "1";
+        dismissButton.style.boxSizing = "border-box";
+        dismissButton.style.fontFamily = "monospace";
+        dismissButton.style.zIndex = "3";
+        dismissButton.textContent = "×";
+        dismissButton.addEventListener("click", () => {
+          bannerElement.remove();
+          document.body.style.marginTop = "0";
+          showingBanner = false;
+        });
+
+        root.appendChild(left);
+        root.appendChild(center);
+        root.appendChild(dismissButton);
+        bannerElement.replaceChildren(root);
+      };
 
       // Check if banner already exists
       let banner = document.getElementById("ms365-warning-banner");
 
       if (banner) {
         // Update existing banner content and color
-        banner.innerHTML = bannerContent;
+        renderBannerContent(banner);
         banner.style.background = bannerColor;
         fetchBranding().then((branding) => applyBranding(banner, branding));
 
@@ -6047,7 +6325,7 @@ if (window.checkExtensionLoaded) {
       // CRITICAL: Register the banner BEFORE adding to DOM
       registerInjectedElement(banner);
 
-      banner.innerHTML = bannerContent;
+      renderBannerContent(banner);
       document.body.insertBefore(banner, document.body.firstChild);
 
       // Register all child elements created via innerHTML
@@ -6473,11 +6751,19 @@ if (window.checkExtensionLoaded) {
       const isCriticalThreat = severity === "critical" || severity === "high";
       const isRogueApp = reportData.type === "critical_rogue_app_detected";
       const isPhishingBlocked = reportData.type === "phishing_blocked";
+      const isBlockedDomainSquatting =
+        reportData.type === "domain_squatting_detected" &&
+        reportData.action === "blocked";
 
       // Allow critical/high threats and rogue apps, skip informational reports
-      if (!isCriticalThreat && !isRogueApp && !isPhishingBlocked) {
+      if (
+        !isCriticalThreat &&
+        !isRogueApp &&
+        !isPhishingBlocked &&
+        !isBlockedDomainSquatting
+      ) {
         logger.debug(
-          `CIPP reporting skipped for ${reportData.type} - only high/critical threats are reported`
+          `CIPP reporting skipped for ${reportData.type} - only high/critical threats or blocked domain squatting events are reported`
         );
         return;
       }

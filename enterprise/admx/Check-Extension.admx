@@ -263,6 +263,18 @@
       </disabledValue>
     </policy>
 
+    <!-- Enable Domain Squatting Detection -->
+    <policy name="CheckDomainSquattingEnabled" class="Machine" displayName="$(string.CheckDomainSquattingEnabled)" explainText="$(string.CheckDomainSquattingEnabled_Explain)" key="SOFTWARE\Policies\Microsoft\Edge\3rdparty\extensions\knepjpocdagponkonnbggpcnhnaikajg\policy\domainSquatting" valueName="enabled">
+      <parentCategory ref="CheckExtensionEdge" />
+      <supportedOn ref="SUPPORTED_WIN7" />
+      <enabledValue>
+        <decimal value="1" />
+      </enabledValue>
+      <disabledValue>
+        <decimal value="0" />
+      </disabledValue>
+    </policy>
+
     <!-- CHROME EXTENSION POLICIES -->
 
     <!-- Extension Settings - Chrome -->
@@ -494,6 +506,18 @@
 
     <!-- Enable Debug Logging - Chrome -->
     <policy name="CheckDebugLoggingChrome" class="Machine" displayName="$(string.CheckDebugLoggingChrome)" explainText="$(string.CheckDebugLoggingChrome_Explain)" key="SOFTWARE\Policies\Google\Chrome\3rdparty\extensions\benimdeioplgkhanklclahllklceahbe\policy" valueName="enableDebugLogging">
+      <parentCategory ref="CheckExtensionChrome" />
+      <supportedOn ref="SUPPORTED_WIN7" />
+      <enabledValue>
+        <decimal value="1" />
+      </enabledValue>
+      <disabledValue>
+        <decimal value="0" />
+      </disabledValue>
+    </policy>
+
+    <!-- Enable Domain Squatting Detection - Chrome -->
+    <policy name="CheckDomainSquattingEnabledChrome" class="Machine" displayName="$(string.CheckDomainSquattingEnabledChrome)" explainText="$(string.CheckDomainSquattingEnabledChrome_Explain)" key="SOFTWARE\Policies\Google\Chrome\3rdparty\extensions\benimdeioplgkhanklclahllklceahbe\policy\domainSquatting" valueName="enabled">
       <parentCategory ref="CheckExtensionChrome" />
       <supportedOn ref="SUPPORTED_WIN7" />
       <enabledValue>

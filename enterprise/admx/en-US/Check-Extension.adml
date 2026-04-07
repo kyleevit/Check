@@ -278,6 +278,13 @@
                 
                 Debug logging should only be enabled for troubleshooting as it may impact performance and generate large log files.
             </string>
+            <string id="CheckDomainSquattingEnabled">Enable domain squatting detection</string>
+            <string id="CheckDomainSquattingEnabled_Explain">
+                This policy controls domain squatting detection in the Check extension.
+
+                When enabled (default): Typosquatting, homoglyph, and combosquatting protections are active.
+                When disabled: Domain squatting detections are skipped.
+            </string>
             <!-- Debug Logging - Chrome -->
             <string id="CheckDebugLoggingChrome">Enable debug logging (Chrome)</string>
             <string id="CheckDebugLoggingChrome_Explain">
@@ -287,6 +294,13 @@
                 When disabled (default): Only essential logging occurs.
                 
                 Debug logging should only be enabled for troubleshooting as it may impact performance and generate large log files.
+            </string>
+            <string id="CheckDomainSquattingEnabledChrome">Enable domain squatting detection (Chrome)</string>
+            <string id="CheckDomainSquattingEnabledChrome_Explain">
+                This policy controls domain squatting detection in the Check extension for Google Chrome.
+
+                When enabled (default): Typosquatting, homoglyph, and combosquatting protections are active.
+                When disabled: Domain squatting detections are skipped.
             </string>
             <!-- Valid Page Badge - Chrome -->
             <string id="CheckValidPageBadgeChrome">Show valid page badge (Chrome)</string>

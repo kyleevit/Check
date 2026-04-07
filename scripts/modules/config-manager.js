@@ -111,14 +111,27 @@ export class ConfigManager {
             "https://raw.githubusercontent.com/CyberDrain/Check/refs/heads/main/rules/detection-rules.json",
           updateInterval: 24,
           enableDebugLogging: false,
+          domainSquatting: {
+            enabled: true,
+            deviationThreshold: 2,
+            algorithms: {
+              levenshtein: true,
+              homoglyph: true,
+              typosquat: true,
+              combosquat: true,
+            },
+            protectedDomains: [],
+            Action: "block",
+            logDetections: true,
+          },
           // Note: enableDeveloperConsoleLogging is not policy-managed - remains under user control
 
           // Custom branding (matches managed_schema.json structure)
           customBranding: {
             companyName: "CyberDrain",
             productName: "Check Enterprise",
-            supportUrl: "https://support.cyberdrain.com",
-            privacyPolicyUrl: "https://cyberdrain.com/privacy",
+            supportUrl: "",
+            privacyPolicyUrl: "",
             aboutUrl: "",
             primaryColor: "#F77F00",
             logoUrl:
@@ -291,6 +304,21 @@ export class ConfigManager {
       customRulesUrl: "https://raw.githubusercontent.com/CyberDrain/Check/refs/heads/main/rules/detection-rules.json",
       updateInterval: 24, // hours
 
+      // Domain squatting runtime settings
+      domainSquatting: {
+        enabled: true,
+        deviationThreshold: 2,
+        algorithms: {
+          levenshtein: true,
+          homoglyph: true,
+          typosquat: true,
+          combosquat: true,
+        },
+        protectedDomains: [],
+        Action: "block",
+        logDetections: true,
+      },
+
       // Performance settings
       scanDelay: 100,
       maxScanDepth: 10,
@@ -327,17 +355,17 @@ export class ConfigManager {
       version: "1.0.0",
 
       // Visual branding
-      primaryColor: "#2563eb",
+      primaryColor: "#F77F00",
       secondaryColor: "#64748b",
       logoUrl: "images/logo.png",
       faviconUrl: "images/favicon.ico",
 
       // Contact information
-      supportEmail: "support@check.com",
-      supportUrl: "https://support.check.com",
-      privacyPolicyUrl: "https://check.com/privacy",
+      supportEmail: "",
+      supportUrl: "",
+      privacyPolicyUrl: "",
       aboutUrl: "",
-      termsOfServiceUrl: "https://check.com/terms",
+      termsOfServiceUrl: "",
 
       // Customizable text
       welcomeMessage:
