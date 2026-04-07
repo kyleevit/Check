@@ -5305,11 +5305,13 @@ if (window.checkExtensionLoaded) {
         const clientInfo = await extractClientInfo(location.href);
         const threatAction =
           severity === "high" && protectionEnabled ? "blocked" : "warned";
+        const threatEventType =
+          threatAction === "blocked" || threatAction === "warned"
+            ? "threat_detected"
+            : "threat_detected_no_action";
 
         logProtectionEvent({
-          type: protectionEnabled
-            ? "threat_detected"
-            : "threat_detected_no_action",
+          type: threatEventType,
           action: threatAction,
           url: location.href,
           threatLevel: severity,
