@@ -1,7 +1,7 @@
 {
-  "companyName": "CyberDrain",
+  "companyName": "Evolution IT",
   "productName": "Check",
-  "supportUrl": "",
+  "supportUrl": "https://evit.com.au",
   "privacyPolicyUrl": "",
   "aboutUrl": "",
   "version": "1.1.0",
@@ -48,11 +48,11 @@
     "customIconsEnabled": true
   },
   "features": {
-    "welcomeMessage": "Welcome to Check, CyberDrain's Microsoft 365 Phishing Protection - Safeguard Your Organization",
-    "tagline": "Advanced phishing detection for Microsoft 365 login pages by CyberDrain",
-    "securityBadgeText": "Protected by CyberDrain",
-    "blockedPageTitle": "Phishing Attempt Blocked by CyberDrain",
-    "blockedPageMessage": "This page appears to be a phishing attempt targeting Microsoft 365 credentials. CyberDrain has blocked access to protect your organization."
+    "welcomeMessage": "Welcome to Check, Evolution IT's Microsoft 365 Phishing Protection - Safeguard Your Organization",
+    "tagline": "Advanced phishing detection for Microsoft 365 login pages by Evolution IT",
+    "securityBadgeText": "Protected by Evolution IT",
+    "blockedPageTitle": "Phishing Attempt Blocked by Evolution IT",
+    "blockedPageMessage": "This page appears to be a phishing attempt targeting Microsoft 365 credentials. Evolution IT has blocked access to protect your organization."
   },
   "customText": {
     "extensionDescription": "Check provides enterprise-grade detection and blocking of phishing attempts targeting Microsoft 365 login pages, with comprehensive policy management and audit capabilities.",
@@ -149,8 +149,8 @@
   "metadata": {
     "created": "2024-01-01T00:00:00Z",
     "modified": "2024-01-01T00:00:00Z",
-    "author": "Check Technologies",
-    "maintainer": "security-team@check.com",
+    "author": "Evolution IT",
+    "maintainer": "support@evit.com.au",
     "schema_version": "1.0"
   }
 }
