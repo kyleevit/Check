@@ -7,10 +7,10 @@
   "version": "1.1.0",
   "description": "Protect against phishing attacks targeting Microsoft 365 login pages with enterprise-grade detection",
   "branding": {
-    "primaryColor": "#F77F00",
-    "primaryHover": "#E56F00",
+    "primaryColor": "#009dda",
+    "primaryHover": "#009dda",
     "primaryLight": "rgba(247, 127, 0, 0.1)",
-    "primaryDark": "#D96800",
+    "primaryDark": "#003ad9",
     "secondaryColor": "#003049",
     "secondaryHover": "#004B73",
     "secondaryLight": "rgba(0, 48, 73, 0.1)",
